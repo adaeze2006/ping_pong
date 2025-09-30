@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>PingPong Arcade — Resume Demo</title>
+<style>
+  :root{
+    --bg-1:#060814; --panel:#071427; --neon:#39ff14; --accent:#00ffd8; --pink:#ff6ec7; --muted:#9fb2c2;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial}
+  body{
+    background:
+      radial-gradient(circle at 10% 10%, rgba(57,255,20,0.03), transparent 6%),
+      linear-gradient(180deg,#020418 0%, #031028 100%);
+    color:#e6f7ff;
+    display:flex;align-items:center;justify-content:center;padding:18px;
+  }
+  .app{width:100%;max-width:1100px}
+  header.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .brand{font-weight:800;font-size:20px}
+  .coins{background:rgba(255,255,255,0.02);padding:6px 10px;border-radius:10px;color:var(--muted)}
+  /* screens */
+  .screen{display:none}
+  .screen.active{display:block}
+  .card{
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border-radius:12px;padding:18px;box-shadow:0 12px 38px rgba(0,0,0,0.5)
+  }
+  /* menu */
+  .menu{display:flex;gap:12px;flex-direction:column;align-items:center;text-align:center}
+  .title{font-size:36px;margin:8px;color:var(--neon);text-shadow:0 6px 28px rgba(0,255,150,0.06)}
+  .lead{color:var(--muted);max-width:72ch}
+  .controls{display:flex;gap:12px;margin-top:10px}
+  button.btn{padding:10px 18px;border-radius:10px;border:none;background:linear-gradient(90deg,var(--neon),var(--accent));color:#042;cursor:pointer;font-weight:800}
+  button.btn.ghost{background:transparent;border:2px solid rgba(255,255,255,0.06);color:var(--neon)}
+  input,select{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:#041426;color:#dff6f0}
+  /* level select / shop placeholders */
+  .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:12px}
+  .sub-btn{padding:8px;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid rgba(255,255,255,0.03);font-weight:700;cursor:pointer}
+  .sub-btn.locked{opacity:0.35;cursor:not-allowed}
+  /* phaser container area */
+  #gameWrap{margin-top:14px;border-radius:12px;overflow:hidden;background:linear-gradient(180deg,#041a2b,#02101a);box-shadow:0 16px 40px rgba(0,0,0,0.6)}
+  #phaser{width:100%;height:560px;display:block;max-width:980px;margin:0 auto}
+  .hud{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:transparent;color:var(--muted)}
+  .score{font-weight:900;font-size:18px;color:#fff}
+  .mode{font-weight:700;color:var(--neon)}
+  .game-controls{display:flex;gap:8px;justify-content:center;padding:10px}
+  .small{padding:6px 10px}
+  /* popup */
+  .toast{position:fixed;left:50%;transform:translateX(-50%);top:16px;background:var(--neon);color:#041218;padding:8px 14px;border-radius:10px;font-weight:800;display:none;z-index:1000}
+  .toast.show{display:block}
+  /* responsive */
+  @media (max-width:900px){
+    .grid{grid-template-columns:repeat(3,1fr)}
+    #phaser{height:420px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+  </header>
+
+  <!-- MENU -->
+  <section id="menuScreen" class="screen active">
+    <div class="card menu">
+      <div class="title">PingPong Delight</div>
+      <div class="lead">"Simple rules. Endless excitement."</div>
+
+      <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+        <label>Player: <input id="playerName" type="text" placeholder="Your name" value="Player"></label>
+        <label>Mode:
+          <select id="modeSelect">
+            <option value="ai">Play vs AI</option>
+            <option value="local">Local 2-player</option>
+            <option value="solo">Solo (obstacle)</option>
+          </select>
+        </label>
+        <label>Difficulty:
+          <select id="difficulty">
+            <option value="1">Easy</option>
+            <option value="1.5">Normal</option>
+            <option value="2">Hard</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="controls">
+        <button id="btnPlay" class="btn">Play</button>
+        <button id="btnHow" class="btn ghost">How to play</button>
+        <button id="btnShop" class="btn ghost">Shop</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOWTO -->
+  <section id="howScreen" class="screen">
+    <div class="card">
+      <h3>How to Play</h3>
+      <ul style="text-align:left">
+        <li>Use mouse/finger to move left paddle. Use W/S or ↑/↓ keys to move too.</li>
+        <li>Win rounds by scoring 7 points (configurable in code).</li>
+        <li>Power-ups drop occasionally — grab them to enlarge paddle, slow ball, or get coins.</li>
+      <li>Controls — Mouse / Touch: left paddle, W/S or ↑↓ for keyboard control. Local mode: right player uses W/S keys.</li>
+      </ul>
+      <div style="margin-top:12px;">
+        <button id="btnHowBack" class="btn ghost">Back</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SHOP (simple) -->
+  <section id="shopScreen" class="screen">
+    <div class="card">
+      <h3>Shop</h3>
+      <div class="coins">💰 <span id="uiCoins">0</span></div>
+      <div class="grid" id="shopGrid"></div>
+      <div style="margin-top:12px"><button id="btnShopBack" class="btn ghost">Back</button></div>
+    </div>
+  </section>
+
+  <!-- GAME WRAP -->
+  <div id="gameWrap" class="card" style="display:none">
+    <div class="hud">
+      <div>
+        <div id="nameDisplay" style="font-weight:800">Player</div>
+        <div id="levelLabel" style="font-size:12px;color:var(--muted)">Arcade • Neon</div>
+      </div>
+      <div class="score"><span id="scoreA">0</span> : <span id="scoreB">0</span></div>
+      <div class="mode"><span id="modeLabel">vs AI</span></div>
+    </div>
+    <div id="phaser"></div>
+    <div class="game-controls">
+      <button id="btnPause" class="btn ghost small">Pause</button>
+      <button id="btnBack" class="btn ghost small">Exit to Menu</button>
+      <button id="btnRestart" class="btn small">Restart</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* PingPong Arcade — Single-file polished game
+   No external assets required. WebAudio-generated SFX.
+   Save as pingpong-arcade.html and open in browser.
+*/
+
+(() => {
+  // ---- Basic state & persistence ----
+  const STORAGE = 'pp_arcade_v1';
+  const defaultState = { coins: 0, purchases: {} };
+  let STATE = JSON.parse(localStorage.getItem(STORAGE) || 'null') || defaultState;
+  function saveState(){ localStorage.setItem(STORAGE, JSON.stringify(STATE)); updateCoinsUI(); }
+
+  // ---- DOM elements ----
+  const menuScreen = document.getElementById('menuScreen');
+  const howScreen = document.getElementById('howScreen');
+  const shopScreen = document.getElementById('shopScreen');
+  const gameWrap = document.getElementById('gameWrap');
+  const toastEl = document.getElementById('toast');
+
+  const btnPlay = document.getElementById('btnPlay');
+  const btnHow = document.getElementById('btnHow');
+  const btnHowBack = document.getElementById('btnHowBack');
+  const btnShop = document.getElementById('btnShop');
+  const btnShopBack = document.getElementById('btnShopBack');
+  const btnPause = document.getElementById('btnPause');
+  const btnBack = document.getElementById('btnBack');
+  const btnRestart = document.getElementById('btnRestart');
+
+  const playerNameInput = document.getElementById('playerName');
+  const modeSelect = document.getElementById('modeSelect');
+  const diffSelect = document.getElementById('difficulty');
+
+  const uiCoins = document.getElementById('uiCoins');
+  const nameDisplay = document.getElementById('nameDisplay');
+  const modeLabel = document.getElementById('modeLabel');
+  const scoreAEl = document.getElementById('scoreA');
+  const scoreBEl = document.getElementById('scoreB');
+
+  // small UI helpers
+  function showScreen(el){ [menuScreen,howScreen,shopScreen].forEach(s=>s.classList.remove('active')); el.classList.add('active'); }
+  function toast(msg, t=900){ toastEl.textContent = msg; toastEl.classList.add('show'); setTimeout(()=>toastEl.classList.remove('show'), t); }
+  function updateCoinsUI(){ uiCoins.textContent = STATE.coins || 0; }
+
+  // Shop demo
+  const SHOP_ITEMS = [
+    { id:'paddle_neon', name:'Neon Paddle', price:50 },
+    { id:'ball_glow', name:'Glow Ball', price:70 },
+    { id:'theme_space', name:'Space Theme', price:120 }
+  ];
+  function renderShop(){
+    const g = document.getElementById('shopGrid'); g.innerHTML='';
+    SHOP_ITEMS.forEach(it=>{
+      const card = document.createElement('div'); card.className='shop-item'; card.style.padding='10px';
+      card.innerHTML = `<div style="font-weight:800">${it.name}</div><div style="color:var(--muted)">Price: ${it.price} 💰</div>`;
+      const btn = document.createElement('button'); btn.className='btn small';
+      btn.textContent = (STATE.purchases && STATE.purchases[it.id]) ? 'Owned' : (STATE.coins>=it.price ? 'Buy' : 'Not enough');
+      btn.onclick = ()=>{
+        if (STATE.purchases && STATE.purchases[it.id]) { toast('Already owned'); return; }
+        if (STATE.coins < it.price) { toast('Not enough coins'); return; }
+        STATE.coins -= it.price; STATE.purchases = STATE.purchases||{}; STATE.purchases[it.id]=true; saveState(); renderShop(); toast('Purchase successful'); 
+      };
+      card.appendChild(btn); g.appendChild(card);
+    });
+  }
+
+  // ---- Audio using WebAudio (tiny helpers, no files) ----
+  let audioCtx = null;
+  function getAudioCtx(){ if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); return audioCtx; }
+  function playBeep(freq=700, time=0.07, vol=0.01){
+    try {
+      const ctx = getAudioCtx();
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.value = vol;
+      o.connect(g); g.connect(ctx.destination);
+      o.start(); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + time);
+      o.stop(ctx.currentTime + time + 0.02);
+    } catch(e){}
+  }
+  function playSuccess(){ playBeep(900,0.14,0.02); }
+  function playFail(){ playBeep(240,0.12,0.02); }
+
+  // ---- Canvas game (vanilla canvas) ----
+  const canvas = document.createElement('canvas');
+  canvas.style.width='100%';
+  canvas.style.height='100%';
+  canvas.id='gameCanvas';
+  document.getElementById('phaser').appendChild(canvas);
+  let ctx = canvas.getContext('2d');
+
+  // resize canvas to container
+  function fitCanvas(){
+    const parent = canvas.parentElement;
+    const rect = parent.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(rect.width * ratio);
+    canvas.height = Math.floor(560 * ratio * (rect.width/980)); // preserve ~aspect; clamp below
+    // simpler: make fixed 980x560 scaled by parent width
+    const w = Math.min(rect.width, 980);
+    canvas.width = Math.round(w * ratio);
+    canvas.height = Math.round((w * 560/980) * ratio);
+    canvas.style.height = (canvas.height/ratio) + 'px';
+    ctx = canvas.getContext('2d');
+    ctx.setTransform(ratio,0,0,ratio,0,0);
+  }
+  window.addEventListener('resize', fitCanvas);
+
+  // game state
+  let G = {
+    running:false, paused:false, mode:'ai', difficulty:1.5,
+    scoreA:0, scoreB:0, playerName:'Player', coins: STATE.coins||0,
+    lastPowerDrop:0, powerups:[], purchases: STATE.purchases||{}
+  };
+
+  // default objects
+  const scene = {
+    paddleL:{x:14,y:200,w:12,h:110,color:'#ffd700'},
+    paddleR:{x:940,y:200,w:12,h:110,color:'#39ff14'},
+    ball:{x:500,y:280,r:10,vx:6,vy:3,color:'#ffffff'},
+    spikesHeight:18
+  };
+
+  function resetObjects(){
+    const w = canvas.width/(window.devicePixelRatio||1);
+    const h = canvas.height/(window.devicePixelPixelRatio||1);
+    scene.paddleL.y = h/2 - scene.paddleL.h/2;
+    scene.paddleR.y = h/2 - scene.paddleR.h/2;
+    scene.ball.x = w/2; scene.ball.y = h/2;
+    // ball direction randomized
+    const dir = Math.random()<0.5?-1:1;
+    scene.ball.vx = dir * (4 + 0.6 * G.difficulty);
+    scene.ball.vy = (Math.random()<0.5?-1:1)*(3 + 0.2*G.difficulty);
+  }
+
+  // draw helper
+  function neonRect(x,y,w,h,color,glow=6){
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = glow;
+    roundRect(ctx,x,y,w,h,6,true,false);
+    ctx.restore();
+  }
+  function roundRect(ctx,x,y,w,h,r,fill,stroke){
+    if (typeof r === 'undefined') r = 5;
+    ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+    if (fill) ctx.fill();
+    if (stroke) ctx.stroke();
+  }
+
+  // draw scene
+  function renderScene(){
+    // clear
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const scale = (window.devicePixelRatio||1);
+    const W = canvas.width/scale, H = canvas.height/scale;
+
+    // background gradient
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'rgba(3,8,20,0.9)'); g.addColorStop(1,'rgba(2,16,28,1)');
+    ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+
+    // animated subtle stars
+    for (let i=0;i<20;i++){
+      ctx.fillStyle = 'rgba(255,255,255,0.03)';
+      ctx.fillRect((i*123)%W, (i*77)%H, 2,2);
+    }
+
+    // spikes bottom
+    ctx.fillStyle = '#ff4d4d';
+    const spikeCount = 16;
+    const spikeW = W / spikeCount;
+    for (let i=0;i<spikeCount;i++){
+      const sx = i*spikeW;
+      ctx.beginPath(); ctx.moveTo(sx, H); ctx.lineTo(sx + spikeW/2, H - scene.spikesHeight); ctx.lineTo(sx + spikeW, H); ctx.closePath(); ctx.fill();
+    }
+
+    // paddles
+    neonRect(scene.paddleL.x, scene.paddleL.y, scene.paddleL.w, scene.paddleL.h, scene.paddleL.color, 14);
+    neonRect(W - 14 - scene.paddleR.w, scene.paddleR.y, scene.paddleR.w, scene.paddleR.h, scene.paddleR.color, 12);
+
+    // ball glow
+    ctx.beginPath(); ctx.arc(scene.ball.x, scene.ball.y, scene.ball.r+6,0,Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.04)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(scene.ball.x, scene.ball.y, scene.ball.r,0,Math.PI*2); ctx.fillStyle = scene.ball.color; ctx.fill();
+
+    // powerups
+    G.powerups.forEach(p=>{
+      ctx.fillStyle = p.color;
+      roundRect(ctx,p.x,p.y,28,18,6,true,false);
+      ctx.fillStyle = '#042';
+      ctx.font = '12px Arial'; ctx.fillText(p.label, p.x+6, p.y+13);
+    });
+
+    // score & HUD handled by DOM
+  }
+
+  // physics update
+  function step(dt){
+    const W = canvas.width/(window.devicePixelRatio||1);
+    const H = canvas.height/(window.devicePixelRatio||1);
+
+    // ball movement
+    scene.ball.x += scene.ball.vx;
+    scene.ball.y += scene.ball.vy;
+
+    // wall bounce
+    if (scene.ball.y - scene.ball.r < 8 || scene.ball.y + scene.ball.r > H - scene.spikesHeight - 4){
+      scene.ball.vy *= -1;
+      playBeep(600,0.06,0.008);
+    }
+
+    // left paddle collision
+    const pL = {x:scene.paddleL.x, y:scene.paddleL.y, w:scene.paddleL.w, h:scene.paddleL.h};
+    if (scene.ball.x - scene.ball.r < pL.x + pL.w && scene.ball.x - scene.ball.r > pL.x){
+      if (scene.ball.y > pL.y && scene.ball.y < pL.y + pL.h){
+        scene.ball.vx = Math.abs(scene.ball.vx) * 1.06;
+        const diff = (scene.ball.y - (pL.y + pL.h/2)) / (pL.h/2);
+        scene.ball.vy += diff * 1.8;
+        playBeep(700,0.06,0.01);
+      }
+    }
+
+    // right paddle collision
+    const pR = {x:W - 14 - scene.paddleR.w, y:scene.paddleR.y, w:scene.paddleR.w, h:scene.paddleR.h};
+    if (scene.ball.x + scene.ball.r > pR.x && scene.ball.x + scene.ball.r < pR.x + pR.w + 8){
+      if (scene.ball.y > pR.y && scene.ball.y < pR.y + pR.h){
+        scene.ball.vx = -Math.abs(scene.ball.vx) * 1.03;
+        const diff = (scene.ball.y - (pR.y + pR.h/2)) / (pR.h/2);
+        scene.ball.vy += diff * 1.6;
+        playBeep(540,0.06,0.009);
+      }
+    }
+
+    // scoring: ball off left or right
+    if (scene.ball.x < -40){
+      G.scoreB++;
+      playFail();
+      updateScoreDOM();
+      resetRound();
+      return;
+    } else if (scene.ball.x > W + 40){
+      G.scoreA++;
+      G.coins += 8;
+      STATE.coins = G.coins; saveState();
+      playSuccess();
+      updateScoreDOM();
+      resetRound();
+      return;
+    }
+
+    // AI paddle move (if mode ai)
+    if (G.mode === 'ai'){
+      const target = scene.ball.y;
+      const speed = 2 + (G.difficulty-1.5); // ai speed scales
+      if (scene.paddleR.y + scene.paddleR.h/2 < target - 8) scene.paddleR.y += speed;
+      if (scene.paddleR.y + scene.paddleR.h/2 > target + 8) scene.paddleR.y -= speed;
+      // clamp
+      scene.paddleR.y = Math.max(8, Math.min(H - scene.paddleR.h - scene.spikesHeight - 4, scene.paddleR.y));
+    } else if (G.mode === 'local'){
+      // right paddle controlled by W/S keys (handled in input loop)
+    }
+
+    // powerups fall & collect
+    for (let i=G.powerups.length-1;i>=0;i--){
+      const p = G.powerups[i]; p.y += 1.8 + p.speed;
+      if (p.y > H - scene.spikesHeight - 30){ G.powerups.splice(i,1); continue; }
+      // collision with player paddle
+      if (p.x < pL.x + pL.w && p.x + 28 > pL.x && p.y < pL.y + pL.h && p.y + 18 > pL.y){
+        applyPowerup(p, 'player'); G.powerups.splice(i,1); continue;
+      }
+      // collision with right paddle
+      if (p.x < pR.x + pR.w && p.x + 28 > pR.x && p.y < pR.y + pR.h && p.y + 18 > pR.y){
+        applyPowerup(p, 'opponent'); G.powerups.splice(i,1); continue;
+      }
+    }
+
+    // occasionally spawn powerups
+    const now = Date.now();
+    if (now - G.lastPowerDrop > 7000 + Math.random()*8000){
+      G.lastPowerDrop = now;
+      spawnPowerup();
+    }
+
+    // clamp paddles
+    scene.paddleL.y = Math.max(8, Math.min(H - scene.paddleL.h - scene.spikesHeight - 4, scene.paddleL.y));
+    scene.paddleR.y = Math.max(8, Math.min(H - scene.paddleR.h - scene.spikesHeight - 4, scene.paddleR.y));
+
+    // check win condition
+    if (G.scoreA >= 7 || G.scoreB >= 7){
+      // show result, give coins on win
+      if (G.scoreA > G.scoreB){ toast('You win! +20 coins'); G.coins += 20; STATE.coins = G.coins; saveState(); } else toast('You lost!');
+      // stop
+      stopGame();
+    }
+  }
+
+  function applyPowerup(p, who){
+    if (p.type === 'bigPaddle'){
+      if (who === 'player'){ scene.paddleL.h = Math.min(scene.paddleL.h + 40, 220); toast('Paddle Enlarged!'); }
+      else { scene.paddleR.h = Math.min(scene.paddleR.h + 40, 220); toast('Opponent Paddle Enlarged!'); }
+      playBeep(920,0.12,0.015);
+      setTimeout(()=>{ scene.paddleL.h = 110; scene.paddleR.h = 110; }, 7000);
+    } else if (p.type === 'slowBall'){
+      scene.ball.vx *= 0.7; scene.ball.vy *= 0.8; toast('Ball slowed'); playBeep(320,0.12,0.012);
+    } else if (p.type === 'coins'){
+      G.coins += 12; STATE.coins = G.coins; saveState(); updateCoinsUI(); toast('+12 coins');
+    } else if (p.type === 'reverse'){
+      scene.ball.vx *= -1; toast('Reverse!'); playBeep(480,0.12,0.012);
+    }
+  }
+
+  function spawnPowerup(){
+    const W = canvas.width/(window.devicePixelRatio||1);
+    const types = ['bigPaddle','slowBall','coins','reverse'];
+    const t = types[Math.floor(Math.random()*types.length)];
+    const colors = { bigPaddle:'#ff6ec7', slowBall:'#00ffd8', coins:'#ffd700', reverse:'#ff8c42' };
+    const labels = { bigPaddle:'BIG', slowBall:'SLOW', coins:'COIN', reverse:'REV' };
+    G.powerups.push({ x:40 + Math.random()*(W-120), y:20, speed: Math.random()*0.8+0.2, type:t, color:colors[t], label:labels[t] });
+  }
+
+  function resetRound(){
+    resetObjects();
+    // small delay
+    scene.ball.vx = (Math.random()<0.5?-1:1)*(4 + Math.random()*2 + (G.difficulty-1));
+  }
+
+  function startGame(){
+    // prepare canvas and state
+    fitCanvas();
+    G.mode = modeSelect.value;
+    G.difficulty = parseFloat(diffSelect.value);
+    G.playerName = playerNameInput.value || 'Player';
+    G.scoreA = 0; G.scoreB = 0; G.powerups = []; G.lastPowerDrop = Date.now();
+    scene.paddleL.h = 110; scene.paddleR.h = 110;
+    G.coins = STATE.coins || 0;
+    nameDisplay.textContent = G.playerName;
+    modeLabel.textContent = (G.mode === 'ai') ? 'vs AI' : (G.mode === 'local' ? 'Local' : 'Solo');
+    gameWrap.style.display = 'block';
+    document.getElementById('menuScreen').classList.remove('active');
+    document.getElementById('howScreen') && document.getElementById('howScreen').classList.remove('active');
+    document.getElementById('shopScreen') && document.getElementById('shopScreen').classList.remove('active');
+
+    G.scoreA = 0; G.scoreB = 0; updateScoreDOM();
+    G.running = true; G.paused = false;
+    resetObjects();
+    lastTick = performance.now();
+    if (!animId) animId = requestAnimationFrame(tick);
+  }
+
+  function stopGame(){
+    G.running = false; G.paused = true;
+    // show menu controls
+    btnRestart.style.display = 'inline-block';
+  }
+
+  function updateScoreDOM(){ scoreAEl.textContent = G.scoreA; scoreBEl.textContent = G.scoreB; }
+
+  // Input handling
+  let keys = {};
+  window.addEventListener('keydown',e=>{ keys[e.key.toLowerCase()] = true; if (e.key.toLowerCase()==='p') togglePause(); });
+  window.addEventListener('keyup',e=>{ keys[e.key.toLowerCase()] = false; });
+
+  // mouse/touch control for left paddle
+  canvas.addEventListener('mousemove', e=>{
+    const rect = canvas.getBoundingClientRect();
+    scene.paddleL.y = Math.max(8, Math.min((rect.height) - scene.paddleL.h - scene.spikesHeight - 4, e.clientY - rect.top - scene.paddleL.h/2));
+  });
+  canvas.addEventListener('touchmove', e=>{
+    const t = e.touches[0]; if (!t) return;
+    const rect = canvas.getBoundingClientRect();
+    scene.paddleL.y = Math.max(8, Math.min((rect.height) - scene.paddleL.h - scene.spikesHeight - 4, t.clientY - rect.top - scene.paddleL.h/2));
+  }, { passive:false });
+
+  // local right paddle keyboard (W/S)
+  function applyKeyboard(){
+    const H = canvas.height/(window.devicePixelRatio||1);
+    if (keys['arrowup']) scene.paddleL.y -= 6;
+    if (keys['arrowdown']) scene.paddleL.y += 6;
+    if (G.mode === 'local'){ if (keys['w']) scene.paddleR.y -= 6; if (keys['s']) scene.paddleR.y += 6; }
+    // clamp
+    scene.paddleL.y = Math.max(8, Math.min(H - scene.paddleL.h - scene.spikesHeight - 4, scene.paddleL.y));
+    scene.paddleR.y = Math.max(8, Math.min(H - scene.paddleR.h - scene.spikesHeight - 4, scene.paddleR.y));
+  }
+
+  // game loop
+  let animId = null; let lastTick = 0;
+  function tick(ts){
+    animId = requestAnimationFrame(tick);
+    if (!G.running || G.paused) return;
+    const dt = ts - lastTick; lastTick = ts;
+    // update positions influenced by keyboard
+    applyKeyboard();
+    step(dt);
+    renderScene();
+  }
+
+  // pause toggles
+  function togglePause(){ G.paused = !G.paused; if (G.paused){ toast('Paused'); } else toast('Resumed'); }
+
+  // beep wrapper
+  function playBeep(freq=700,time=0.07,vol=0.012){ try{ const ctx = getAudioCtx(); const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine'; o.frequency.value=freq; g.gain.value = vol; o.connect(g); g.connect(ctx.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + time); o.stop(ctx.currentTime + time + 0.02); }catch(e){} }
+  function getAudioCtx(){ if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)(); return audioCtx; }
+
+  // reset objects to start positions
+  function resetObjects(){
+    fitCanvas();
+    const W = canvas.width/(window.devicePixelRatio||1); const H = canvas.height/(window.devicePixelRatio||1);
+    scene.paddleL.x = 12; scene.paddleR.x = W - 12 - scene.paddleR.w;
+    scene.paddleL.y = H/2 - scene.paddleL.h/2; scene.paddleR.y = H/2 - scene.paddleR.h/2;
+    scene.ball.x = W/2; scene.ball.y = H/2;
+    scene.ball.r = 10;
+    const dir = Math.random()<0.5?-1:1;
+    scene.ball.vx = dir*(4 + G.difficulty);
+    scene.ball.vy = (Math.random()<0.5?-1:1)*(2 + G.difficulty*0.6);
+  }
+
+  // UI wiring
+  btnPlay.addEventListener('click', ()=>{ startGame(); gameWrap.style.display='block'; document.getElementById('menuScreen').classList.remove('active'); });
+  btnHow.addEventListener('click', ()=>{ showScreen(howScreen); howScreen.classList.add('active'); menuScreen.classList.remove('active'); });
+  btnHowBack.addEventListener('click', ()=>{ showScreen(menuScreen); menuScreen.classList.add('active'); howScreen.classList.remove('active'); });
+  btnShop.addEventListener('click', ()=>{ renderShop(); showScreen(shopScreen); shopScreen.classList.add('active'); menuScreen.classList.remove('active'); });
+  btnShopBack.addEventListener('click', ()=>{ showScreen(menuScreen); menuScreen.classList.add('active'); shopScreen.classList.remove('active'); });
+  btnPause.addEventListener('click', ()=>{ togglePause(); });
+  btnBack.addEventListener('click', ()=>{ stopGame(); gameWrap.style.display='none'; showScreen(menuScreen); menuScreen.classList.add('active'); });
+  btnRestart.addEventListener('click', ()=>{ startGame(); btnRestart.style.display='none'; });
+
+  // init
+  function init(){
+    fitCanvas();
+    showScreen(menuScreen);
+    updateCoinsUI();
+    stateToDom();
+    resetObjects();
+  }
+  function stateToDom(){ document.getElementById('uiCoins').textContent = STATE.coins||0; nameDisplay.textContent = playerNameInput.value || 'Player'; }
+  init();
+
+  // expose small helpers to windows for debugging (optional)
+  window.pp = {G, STATE, reset: ()=>{STATE={coins:0,purchases:{}}; saveState();}, spawnPowerup};
+
+})(); // end IIFE
+</script>
+</body>
+</html>
